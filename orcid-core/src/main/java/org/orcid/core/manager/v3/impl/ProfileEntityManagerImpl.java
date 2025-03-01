@@ -19,23 +19,7 @@ import org.orcid.core.manager.ClientDetailsEntityCacheManager;
 import org.orcid.core.manager.EncryptionManager;
 import org.orcid.core.manager.ProfileEntityCacheManager;
 import org.orcid.core.manager.impl.OrcidUrlManager;
-import org.orcid.core.manager.v3.AddressManager;
-import org.orcid.core.manager.v3.AffiliationsManager;
-import org.orcid.core.manager.v3.BiographyManager;
-import org.orcid.core.manager.v3.EmailManager;
-import org.orcid.core.manager.v3.ExternalIdentifierManager;
-import org.orcid.core.manager.v3.GivenPermissionToManager;
-import org.orcid.core.manager.v3.NotificationManager;
-import org.orcid.core.manager.v3.OtherNameManager;
-import org.orcid.core.manager.v3.PeerReviewManager;
-import org.orcid.core.manager.v3.ProfileEntityManager;
-import org.orcid.core.manager.v3.ProfileFundingManager;
-import org.orcid.core.manager.v3.ProfileHistoryEventManager;
-import org.orcid.core.manager.v3.ProfileKeywordManager;
-import org.orcid.core.manager.v3.RecordNameManager;
-import org.orcid.core.manager.v3.ResearchResourceManager;
-import org.orcid.core.manager.v3.ResearcherUrlManager;
-import org.orcid.core.manager.v3.WorkManager;
+import org.orcid.core.manager.v3.*;
 import org.orcid.core.manager.v3.read_only.RecordNameManagerReadOnly;
 import org.orcid.core.manager.v3.read_only.impl.ProfileEntityManagerReadOnlyImpl;
 import org.orcid.core.oauth.OrcidOauth2TokenDetailService;
@@ -65,10 +49,7 @@ import org.orcid.jaxb.model.v3.release.record.ResearcherUrls;
 import org.orcid.persistence.dao.BackupCodeDao;
 import org.orcid.persistence.dao.ProfileLastModifiedDao;
 import org.orcid.persistence.dao.UserConnectionDao;
-import org.orcid.persistence.jpa.entities.ClientDetailsEntity;
-import org.orcid.persistence.jpa.entities.IndexingStatus;
-import org.orcid.persistence.jpa.entities.OrcidOauth2TokenDetail;
-import org.orcid.persistence.jpa.entities.ProfileEntity;
+import org.orcid.persistence.jpa.entities.*;
 import org.orcid.pojo.ApplicationSummary;
 import org.orcid.pojo.ajaxForm.Claim;
 import org.orcid.pojo.ajaxForm.PojoUtil;
@@ -176,6 +157,9 @@ public class ProfileEntityManagerImpl extends ProfileEntityManagerReadOnlyImpl i
     @Resource
     private ProfileLastModifiedDao profileLastModifiedDao;
 
+    @Resource
+    private ProfileEmailDomainManager profileEmailDomainManager;
+
     @Override
     public boolean orcidExists(String orcid) {
         return profileDao.orcidExists(orcid);
@@ -203,7 +187,6 @@ public class ProfileEntityManagerImpl extends ProfileEntityManagerReadOnlyImpl i
                 // If it was successfully deprecated
                 if (wasDeprecated) {
                     LOGGER.info("Account {} was deprecated to primary account: {}", deprecatedOrcid, primaryOrcid);
-                    clearRecord(deprecatedOrcid, false);
                     // Move all email's to the primary record
                     Emails deprecatedAccountEmails = emailManager.getEmails(deprecatedOrcid);
                     if (deprecatedAccountEmails != null) {
@@ -215,6 +198,14 @@ public class ProfileEntityManagerImpl extends ProfileEntityManagerReadOnlyImpl i
                             emailManager.moveEmailToOtherAccount(email.getEmail(), deprecatedOrcid, primaryOrcid);
                         }
                     }
+                    List<ProfileEmailDomainEntity> deprecatedEmailDomains = profileEmailDomainManager.getEmailDomains(deprecatedOrcid);
+                    if (deprecatedEmailDomains != null && !deprecatedEmailDomains.isEmpty()) {
+                        for (ProfileEmailDomainEntity emailDomain : deprecatedEmailDomains) {
+                            profileEmailDomainManager.moveEmailDomainToAnotherAccount(emailDomain.getEmailDomain(), deprecatedOrcid, primaryOrcid);
+                        }
+                    }
+                    // important to run this after moving domains, as this function will delete the domains from the database
+                    clearRecord(deprecatedOrcid, false);
 
                     profileLastModifiedDao.updateLastModifiedDateAndIndexingStatus(deprecatedOrcid, IndexingStatus.REINDEX);
                     return true;
@@ -492,6 +483,7 @@ public class ProfileEntityManagerImpl extends ProfileEntityManagerReadOnlyImpl i
                 // Populate primary email
                 String primaryEmailTrim = primaryEmail.trim();
                 emailManager.reactivatePrimaryEmail(orcid, primaryEmailTrim);
+                profileEmailDomainManager.processDomain(orcid, primaryEmailTrim);
                 if (reactivation == null) {
                     // Delete any non primary email
                     emailManager.clearEmailsAfterReactivation(orcid);
@@ -651,6 +643,10 @@ public class ProfileEntityManagerImpl extends ProfileEntityManagerReadOnlyImpl i
 
         // remove trusted individuals
         givenPermissionToManager.removeAllForProfile(orcid);
+
+        // remove email domains
+        // NOTE: when deprecating, the domains get moved to the other record before this code is executed
+        profileEmailDomainManager.removeAllEmailDomains(orcid);
 
         // Remove biography
         if (biographyManager.exists(orcid)) {
