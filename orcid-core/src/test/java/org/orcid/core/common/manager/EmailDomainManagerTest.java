@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.Assert.fail;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.Before;
@@ -50,10 +51,10 @@ public class EmailDomainManagerTest {
         when(emailDomainDaoReadOnlyMock.findByCategory(eq(DomainCategory.PERSONAL))).thenReturn(List.of(e1, e2));
         when(emailDomainDaoReadOnlyMock.findByCategory(eq(DomainCategory.PROFESSIONAL))).thenReturn(List.of(e3));
         
-        when(emailDomainDaoReadOnlyMock.findByEmailDoman("gmail.com")).thenReturn(e1);
-        when(emailDomainDaoReadOnlyMock.findByEmailDoman("orcid.org")).thenReturn(e3);
-        
-        when(emailDomainDaoMock.createEmailDomain(eq("new.domain"), eq(DomainCategory.PROFESSIONAL), eq("https://ror.org/0"))).thenReturn(new EmailDomainEntity("new.domain", DomainCategory.PROFESSIONAL, "https://ror.org/0"));
+        when(emailDomainDaoReadOnlyMock.findByEmailDomain("gmail.com")).thenReturn(List.of(e1));
+        when(emailDomainDaoReadOnlyMock.findByEmailDomain("orcid.org")).thenReturn(List.of(e3));
+
+        when(emailDomainDaoMock.createEmailDomain(eq("new.domain.com"), eq(DomainCategory.PROFESSIONAL), eq("https://ror.org/0"))).thenReturn(new EmailDomainEntity("new.domain.com", DomainCategory.PROFESSIONAL, "https://ror.org/0"));
         when(emailDomainDaoMock.updateRorId(1000L, "https://ror.org/0")).thenReturn(true);
     }
 
@@ -95,31 +96,33 @@ public class EmailDomainManagerTest {
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void findByEmailDoman_NullDomainTest() {
-        edm.findByEmailDoman(null);
+    public void findByEmailDomain_NullDomainTest() {
+        edm.findByEmailDomain(null);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void findByEmailDoman_EmptyDomainTest() {
-        edm.findByEmailDoman("              ");
+    public void findByEmailDomain_EmptyDomainTest() {
+        edm.findByEmailDomain("              ");
     }
     
     @Test
-    public void findByEmailDoman_NothingFoundTest() {
-        assertNull(edm.findByEmailDoman("other.com"));
+    public void findByEmailDomain_NothingFoundTest() {
+        assert(edm.findByEmailDomain("other.com").isEmpty());
     }
     
     @Test
-    public void findByEmailDomanTest() {
-        EmailDomainEntity ede = edm.findByEmailDoman("gmail.com");
+    public void findByEmailDomainTest() {
+        List<EmailDomainEntity> ede = edm.findByEmailDomain("gmail.com");
         assertNotNull(ede);
-        assertEquals("gmail.com", ede.getEmailDomain());
-        assertEquals(DomainCategory.PERSONAL, ede.getCategory());
+        if(ede !=null) {
+        assertEquals("gmail.com", ede.get(0).getEmailDomain());
+        assertEquals(DomainCategory.PERSONAL, ede.get(0).getCategory());
+        }
     }
     
     @Test(expected = IllegalArgumentException.class)
     public void findByCategory_NullCategoryTest() {
-        edm.findByEmailDoman(null);
+        edm.findByEmailDomain(null);
     }
     
     @Test
@@ -149,9 +152,9 @@ public class EmailDomainManagerTest {
     
     @Test
     public void createOrUpdateEmailDomain_CreateTest() {
-        STATUS s = edm.createOrUpdateEmailDomain("new.domain", "https://ror.org/0");
+        STATUS s = edm.createOrUpdateEmailDomain("new.domain.com", "https://ror.org/0");
         assertEquals(STATUS.CREATED, s);
-        verify(emailDomainDaoMock, times(1)).createEmailDomain(eq("new.domain"), eq(DomainCategory.PROFESSIONAL), eq("https://ror.org/0"));
+        verify(emailDomainDaoMock, times(1)).createEmailDomain(eq("new.domain.com"), eq(DomainCategory.PROFESSIONAL), eq("https://ror.org/0"));
         verify(emailDomainDaoMock, never()).updateRorId(anyLong(), anyString());
     }
     

@@ -24,7 +24,6 @@ import org.orcid.core.manager.ProfileEntityCacheManager;
 import org.orcid.core.manager.RegistrationManager;
 import org.orcid.core.manager.v3.ProfileEntityManager;
 import org.orcid.core.manager.v3.read_only.EmailManagerReadOnly;
-import org.orcid.core.utils.OrcidStringUtils;
 import org.orcid.core.utils.PasswordResetToken;
 import org.orcid.frontend.email.RecordEmailSender;
 import org.orcid.frontend.spring.ShibbolethAjaxAuthenticationSuccessHandler;
@@ -42,6 +41,7 @@ import org.orcid.pojo.ajaxForm.PojoUtil;
 import org.orcid.pojo.ajaxForm.Reactivation;
 import org.orcid.pojo.ajaxForm.Registration;
 import org.orcid.pojo.ajaxForm.Text;
+import org.orcid.utils.OrcidStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -283,7 +283,22 @@ public class PasswordResetController extends BaseController {
 
         passwordConfirmValidate(oneTimeResetPasswordForm.getRetypedPassword(), oneTimeResetPasswordForm.getPassword());
         
-        String orcid = emailManagerReadOnly.findOrcidIdByEmail(passwordResetToken.getEmail());
+        String orcid = null;
+        //check first if valid orcid as the admin portal can send either and email or an orcid
+        if(OrcidStringUtils.isValidOrcid(passwordResetToken.getEmail()) ){
+            if(profileEntityManager.orcidExists(passwordResetToken.getEmail())) {
+                orcid = passwordResetToken.getEmail();
+            }
+            else {
+                String message = "invalidPasswordResetToken";
+                oneTimeResetPasswordForm.getErrors().add(message);
+                return oneTimeResetPasswordForm;
+            }
+        }
+        else {
+            orcid = emailManagerReadOnly.findOrcidIdByEmail(passwordResetToken.getEmail());
+        }
+
         Emails emails = emailManager.getEmails(orcid);
         
         passwordChecklistValidate(oneTimeResetPasswordForm.getRetypedPassword(), oneTimeResetPasswordForm.getPassword(), emails);
@@ -338,7 +353,7 @@ public class PasswordResetController extends BaseController {
     }
 
     private boolean isTokenExpired(PasswordResetToken passwordResetToken) {
-        Date expiryDateOfOneHourFromIssueDate = org.apache.commons.lang.time.DateUtils.addHours(passwordResetToken.getIssueDate(), 4);
+        Date expiryDateOfOneHourFromIssueDate = org.apache.commons.lang.time.DateUtils.addHours(passwordResetToken.getIssueDate(), passwordResetToken.getDurationInHours());
         Date now = new Date();
         return (expiryDateOfOneHourFromIssueDate.getTime() < now.getTime());
     }
@@ -508,8 +523,13 @@ public class PasswordResetController extends BaseController {
                 recordEmailSender.sendVerificationEmail(orcid, emailToNotify, isPrimaryEmail);
             }
         }
-        
+
         // Log user in
         registrationController.logUserIn(request, response, orcid, password);
+
+        // Add the affiliation
+        if (reactivation.getAffiliationForm() != null) {
+            registrationManager.createAffiliation(reactivation, orcid);
+        }
     }
 }

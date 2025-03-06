@@ -18,7 +18,6 @@ import org.orcid.core.manager.EncryptionManager;
 import org.orcid.core.manager.ProfileEntityCacheManager;
 import org.orcid.core.manager.v3.NotificationManager;
 import org.orcid.core.manager.v3.ProfileEntityManager;
-import org.orcid.core.utils.OrcidStringUtils;
 import org.orcid.frontend.email.RecordEmailSender;
 import org.orcid.jaxb.model.common.AvailableLocales;
 import org.orcid.jaxb.model.v3.release.notification.amended.AmendedSection;
@@ -26,6 +25,7 @@ import org.orcid.persistence.jpa.entities.ProfileEntity;
 import org.orcid.pojo.EmailRequest;
 import org.orcid.pojo.ajaxForm.Claim;
 import org.orcid.pojo.ajaxForm.PojoUtil;
+import org.orcid.utils.OrcidStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -172,12 +172,14 @@ public class ClaimController extends BaseController {
         boolean claimed = profileEntityManager.claimProfileAndUpdatePreferences(orcid, decryptedEmail, userLocale, claim);
         if (!claimed) {
             throw new IllegalStateException("Unable to claim record " + orcid);
-        }                    
-                
+        }
+
+        // Log user in
+        automaticallyLogin(request, claim.getPassword().getValue(), orcid);
+
         // Notify
         notificationManager.sendAmendEmail(orcid, AmendedSection.UNKNOWN, null);
-        // Log user in 
-        automaticallyLogin(request, claim.getPassword().getValue(), orcid);
+
         // detech this situation
         String targetUrl = orcidUrlManager.determineFullTargetUrlFromSavedRequest(request, response);
         if (targetUrl == null)
